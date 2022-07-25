@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 const (
-	gpgProgram = "gpg"
+	gpgProgram    = "gpg"
+	authInfoScope = "git"
 )
 
 var (
@@ -23,6 +25,9 @@ var (
 		".netrc.gpg",
 		".netrc",
 	}
+	logFile  *os.File
+	isTraced bool = false
+	homeDir  string
 )
 
 type Remote struct {
@@ -101,23 +106,50 @@ func readCredentialLine(line string) (Credential, error) {
 	}, nil
 }
 
-func main() {
+func Tracef(f string, v ...any) {
+	if isTraced {
+		log.Printf(f, v...)
+	}
+}
 
-	homeDir, err := os.UserHomeDir()
+func Traceln(v ...any) {
+	if isTraced {
+		log.Println(v...)
+	}
+}
+
+func init() {
+
+	var err error
+
+	flag, err := strconv.ParseBool(os.Getenv("LOGGING"))
+
+	if err == nil {
+		isTraced = flag
+	}
+
+	homeDir, err = os.UserHomeDir()
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	logFile, err := os.OpenFile(filepath.Join(homeDir, "authinfo.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	logFile, err = os.OpenFile(filepath.Join(homeDir, "authinfo.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
 
-	defer logFile.Close()
-
 	log.SetOutput(logFile)
+}
+
+func main() {
+
+	defer func() {
+		if logFile != nil {
+			logFile.Close()
+		}
+	}()
 
 	stdinScanner := bufio.NewScanner(bufio.NewReader(os.Stdin))
 
@@ -135,33 +167,54 @@ func main() {
 
 			authInfoPath := filepath.Join(homeDir, file)
 
+			var raw []byte = nil
+
 			if filepath.Ext(authInfoPath) == ".gpg" {
 
-				log.Println("path: ", authInfoPath, filepath.Ext(authInfoPath))
+				Traceln("path: ", authInfoPath, filepath.Ext(authInfoPath))
 
 				cmd := exec.Command(gpgProgram, "--decrypt", authInfoPath)
-				raw, err := cmd.Output()
+				// run with parent process environments
+				cmd.Env = os.Environ()
+
+				raw, err = cmd.Output()
 
 				if err != nil {
 					log.Fatal("error on executing ", cmd.String(), " ", err)
 				}
+			} else {
+				raw, err = fs.ReadFile(localHomeFs, file)
 
-				scanner := bufio.NewScanner(bytes.NewReader(raw))
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
 
-				// machine [host] login [username]^[application] password [password]\n
-				for scanner.Scan() {
-					credential, err := readCredentialLine(scanner.Text())
+			scanner := bufio.NewScanner(bytes.NewReader(raw))
 
-					if err != nil {
-						log.Fatal(err)
-					}
+			// machine [host] login [username]^[application] password [password]\n
+			for scanner.Scan() {
+				credential, err := readCredentialLine(scanner.Text())
 
-					log.Println(credential.Host, remote.Host, credential.Username, remote.Username)
+				if err != nil {
+					log.Fatal(err)
+				}
 
-					if credential.Host == remote.Host && credential.Username == remote.Username {
-						// username=you\npassword=easy\n\n
-						log.Printf("username=%s\npassword=%s\n\n", credential.Username, credential.Password)
-					}
+				Traceln(
+					credential.Host, remote.Host, credential.Username, remote.Username,
+					credential.Host == remote.Host,
+					credential.Username == remote.Username,
+				)
+
+				if credential.Host == remote.Host &&
+					credential.Username == remote.Username &&
+					credential.Application == authInfoScope {
+
+					// username=you\npassword=easy\n\n
+					Tracef("username=%s\npassword=%s\n\n", credential.Username, credential.Password)
+					fmt.Printf("username=%s\npassword=%s\n\n", credential.Username, credential.Password)
+
+					return
 				}
 			}
 		}
