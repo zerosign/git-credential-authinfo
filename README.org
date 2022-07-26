@@ -1,0 +1,14 @@
+* git-credential-authinfo
+
+** Overview
+
+This repository trying to create simple ~authinfo~ integration for ~git-credential~.
+Currently, it uses ~gpg~ program to decrypt your ~authinfo~ file. For git usage, it
+assume that authinfo ~program~ is ~git~.
+
+Below is the example for ~authinfo~ file.
+
+#+begin_example
+machine gitlab.com login sample^git password test
+machine github.com login sample^git password test
+#+end_example
