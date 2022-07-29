@@ -1,11 +1,16 @@
 name: build
-on: [push, pull_request]
+on:
+  pull_request:
+    types: [ labeled ]
+  pull_request_review:
+    types: [ submitted ]
 
 permissions:
   contents: read
 
 jobs:
   build:
+    if: github.event.label.name == 'build' || github.event.review.state == 'approved'
     strategy:
       fail-fast: false
       matrix:
