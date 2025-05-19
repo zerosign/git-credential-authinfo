@@ -60,6 +60,15 @@ func NextLineValue(scanner *bufio.Scanner, key string) (string, error) {
 }
 
 func readRemoteLine(scanner *bufio.Scanner) (Remote, error) {
+
+	if _, err := NextLineValue(scanner, "authtype"); err != nil {
+		return Remote{}, err
+	}
+
+	if _, err := NextLineValue(scanner, "state"); err != nil {
+		return Remote{}, err
+	}
+
 	protocol, err := NextLineValue(scanner, "protocol")
 
 	if err != nil {
@@ -180,6 +189,7 @@ func main() {
 				raw, err = cmd.Output()
 
 				if err != nil {
+					Tracef("\nerror on executing: %s, err: %s, msg: %s\n", cmd.String(), err, raw)
 					log.Fatal("error on executing ", cmd.String(), " ", err)
 				}
 			} else {
@@ -197,12 +207,16 @@ func main() {
 				credential, err := readCredentialLine(scanner.Text())
 
 				if err != nil {
+					Tracef("\nerror on reading credential line: %s, err: %s\n", credential, err)
 					log.Fatal(err)
 				}
 
 				Traceln(
 					credential.Host, remote.Host, credential.Username, remote.Username,
+					credential.Password,
+					"check host equal: ",
 					credential.Host == remote.Host,
+					"check username equal: ",
 					credential.Username == remote.Username,
 				)
 
